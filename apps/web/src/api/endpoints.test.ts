@@ -31,6 +31,7 @@ import {
   fetchGitFileDiff,
   fetchProjects,
   fetchProjectSummary,
+  runLocalDeployment,
   runProjectAction,
   runTerminalCommand
 } from "./projects";
@@ -133,6 +134,42 @@ describe("API endpoint contracts", () => {
       ["/api/preferences", undefined],
       ["/api/preferences", expect.objectContaining({ method: "PUT", body: "{\"favoriteProjectIds\":[\"alpha\"]}" })]
     ]);
+  });
+
+  it("streams local deployment output and returns its final command result", async () => {
+    const result = {
+      ok: true,
+      command: "bash deploy/publish-local.sh",
+      exitCode: 0,
+      stdout: "building image\n",
+      stderr: "",
+      output: "building image\n",
+      durationMs: 321
+    };
+    const encoder = new TextEncoder();
+    const outputEvent = encoder.encode(JSON.stringify({
+      type: "output",
+      stream: "stdout",
+      chunk: "building image\n"
+    }) + "\n");
+    const completeEvent = encoder.encode(JSON.stringify({ type: "complete", result }) + "\n");
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(outputEvent.slice(0, 7));
+        controller.enqueue(outputEvent.slice(7));
+        controller.enqueue(completeEvent);
+        controller.close();
+      }
+    }));
+    fetchMock.mockResolvedValue(response);
+    const onOutput = vi.fn();
+
+    await expect(runLocalDeployment("alpha", onOutput)).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/alpha/local-deploy", {
+      method: "POST",
+      signal: undefined
+    });
+    expect(onOutput).toHaveBeenCalledWith("stdout", "building image\n");
   });
 
   it("normalizes all folder picker outcomes", async () => {

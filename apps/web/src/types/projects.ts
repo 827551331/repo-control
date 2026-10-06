@@ -24,10 +24,12 @@ export type LocalDeployAvailability = {
   scriptPath: string | null;
 };
 
+export type LocalDeployOutputStream = "stdout" | "stderr";
+export type LocalDeployOutputHandler = (stream: LocalDeployOutputStream, chunk: string) => void;
+
 export type ProjectsResponse = {
   root: string;
   projects: ProjectSummary[];
 };
 
 export type ProjectDetailTab = "overview" | "git" | "branches" | "terminal" | "docker";
-

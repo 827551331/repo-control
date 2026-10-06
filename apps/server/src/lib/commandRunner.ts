@@ -19,10 +19,14 @@ export type CommandRunner = (
   options?: CommandRunnerOptions
 ) => Promise<CommandResult>;
 
+export type CommandOutputStream = "stdout" | "stderr";
+export type CommandOutputHandler = (stream: CommandOutputStream, chunk: string) => void;
+
 export type CommandRunnerOptions = {
   displayCommand?: string;
   shell?: boolean;
   signal?: AbortSignal;
+  onOutput?: CommandOutputHandler;
 };
 
 export type ShellCommandRunnerOptions = {
@@ -65,7 +69,7 @@ export function runProjectCommand(
     detached: process.platform !== "win32"
   });
 
-  return runManagedCommand(child, displayCommand, timeoutMs, options.signal);
+  return runManagedCommand(child, displayCommand, timeoutMs, options.signal, options.onOutput);
 }
 
 export function runShellCommand(
@@ -94,7 +98,8 @@ function runManagedCommand(
   child: ChildProcess,
   displayCommand: string,
   timeoutMs: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onOutput?: CommandOutputHandler
 ): Promise<CommandResult> {
   const startedAt = Date.now();
 
@@ -169,12 +174,24 @@ function runManagedCommand(
     const timeoutTimer = setTimeout(() => beginKillEscalation("timeout"), timeoutMs);
 
     child.stdout?.on("data", (chunk: Buffer) => {
-      stdout = appendOutput(stdout, chunk.toString("utf8"));
+      const text = chunk.toString("utf8");
+      stdout = appendOutput(stdout, text);
+      reportOutput("stdout", text);
     });
 
     child.stderr?.on("data", (chunk: Buffer) => {
-      stderr = appendOutput(stderr, chunk.toString("utf8"));
+      const text = chunk.toString("utf8");
+      stderr = appendOutput(stderr, text);
+      reportOutput("stderr", text);
     });
+
+    function reportOutput(stream: CommandOutputStream, chunk: string): void {
+      try {
+        onOutput?.(stream, chunk);
+      } catch {
+        // Output observers must not interrupt the managed child process.
+      }
+    }
 
     child.on("error", (error) => {
       stderr = appendOutput(stderr, describeSpawnError(error, displayCommand));

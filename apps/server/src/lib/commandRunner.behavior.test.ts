@@ -19,6 +19,21 @@ test("captures command output, exit status and display command", async () => {
   assert.equal(result.output, result.stdout);
 });
 
+test("streams stdout and stderr chunks to the optional output handler", async () => {
+  const output: string[] = [];
+  const result = await runProjectCommand(
+    process.cwd(),
+    process.execPath,
+    ["-e", "process.stdout.write('build step\\n'); process.stderr.write('warning\\n')"],
+    5_000,
+    { onOutput: (stream, chunk) => output.push(`${stream}:${chunk}`) }
+  );
+
+  assert.equal(result.ok, true);
+  assert.ok(output.includes("stdout:build step\n"));
+  assert.ok(output.includes("stderr:warning\n"));
+});
+
 test("reports non-zero exits and spawn failures", async () => {
   const failedResult = await runProjectCommand(
     process.cwd(),

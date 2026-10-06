@@ -704,7 +704,15 @@ export const en = {
       localDeployConfirmBody: "This runs the repository’s local publish script from its root. It may build images and update deployed services.",
       localDeployStart: "Start deployment",
       localDeployRunning: "Deploying…",
-      localDeployCancel: "Cancel"
+      localDeployCancel: "Cancel",
+      localDeployLogTitle: "Deployment output · {{name}}",
+      localDeployLogLabel: "Live deployment log",
+      localDeployLogRunning: "Deployment is running. New output appears below.",
+      localDeployLogSucceeded: "Deployment completed successfully.",
+      localDeployLogFailed: "Deployment failed. See the output below.",
+      localDeployLogWaitingOutput: "Waiting for deployment output…",
+      localDeployLogNoOutput: "The deployment produced no output.",
+      localDeployClose: "Close"
     },
     detailTabs: {
       overview: "Overview",
@@ -1993,7 +2001,15 @@ export const it: TranslationSchema<typeof en> = {
       localDeployConfirmBody: "Esegue lo script di pubblicazione locale del repository. Potrebbe creare immagini e aggiornare i servizi distribuiti.",
       localDeployStart: "Avvia distribuzione",
       localDeployRunning: "Distribuzione…",
-      localDeployCancel: "Annulla"
+      localDeployCancel: "Annulla",
+      localDeployLogTitle: "Output distribuzione · {{name}}",
+      localDeployLogLabel: "Log distribuzione in tempo reale",
+      localDeployLogRunning: "Distribuzione in corso. Il nuovo output apparirà qui sotto.",
+      localDeployLogSucceeded: "Distribuzione completata correttamente.",
+      localDeployLogFailed: "Distribuzione non riuscita. Consulta l'output qui sotto.",
+      localDeployLogWaitingOutput: "In attesa dell'output della distribuzione…",
+      localDeployLogNoOutput: "La distribuzione non ha prodotto output.",
+      localDeployClose: "Chiudi"
     },
     detailTabs: {
       overview: "Panoramica",

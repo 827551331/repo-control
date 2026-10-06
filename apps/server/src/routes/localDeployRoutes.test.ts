@@ -56,8 +56,12 @@ test("advertises and runs the fixed local publish script from the repository roo
   await fs.writeFile(path.join(projectPath, LOCAL_DEPLOY_SCRIPT_PATH), "echo deployment complete\n");
 
   const calls: Array<{ cwd: string; command: string; args: string[]; timeout: number | undefined }> = [];
-  await registerRoutes(app, projectPath, async (cwd, command, args, timeout) => {
+  const streamedOutput: string[] = [];
+  await registerRoutes(app, projectPath, async (cwd, command, args, timeout, options) => {
     calls.push({ cwd, command, args, timeout });
+    options?.onOutput?.("stdout", "building image\n");
+    options?.onOutput?.("stderr", "warning\n");
+    streamedOutput.push("received callback output");
     return commandResult();
   });
 
@@ -70,7 +74,15 @@ test("advertises and runs the fixed local publish script from the repository roo
 
   const response = await app.inject({ method: "POST", url: "/api/projects/alpha/local-deploy" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), commandResult());
+  const contentType = response.headers["content-type"];
+  assert.ok(typeof contentType === "string" && /application\/x-ndjson/.test(contentType));
+  const events = response.body.trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(events, [
+    { type: "output", stream: "stdout", chunk: "building image\n" },
+    { type: "output", stream: "stderr", chunk: "warning\n" },
+    { type: "complete", result: commandResult() }
+  ]);
+  assert.equal(streamedOutput.length, 1);
   assert.deepEqual(calls, [{
     cwd: projectPath,
     command: "bash",

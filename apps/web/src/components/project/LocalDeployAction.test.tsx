@@ -83,9 +83,40 @@ describe("LocalDeployAction", () => {
     await user.click(screen.getByRole("button", { name: "Deploy locally" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Start deployment" }));
 
-    await waitFor(() => expect(runLocalDeployment).toHaveBeenCalledWith("alpha"));
+    await waitFor(() => expect(runLocalDeployment).toHaveBeenCalledWith("alpha", expect.any(Function)));
     expect(onResult).toHaveBeenCalledWith(deploymentResult);
     expect(onCompleted).toHaveBeenCalledOnce();
+    expect(screen.getByRole("log", { name: "Live deployment log" })).toBeVisible();
+    expect(screen.getByText("Deployment completed successfully.")).toBeVisible();
+  });
+
+  it("renders output while the deployment promise is still running", async () => {
+    const user = userEvent.setup();
+    fetchLocalDeployAvailability.mockResolvedValue({
+      available: true,
+      scriptPath: "deploy/publish-local.sh"
+    });
+    let reportOutput: ((stream: "stdout" | "stderr", chunk: string) => void) | undefined;
+    let completeDeployment: ((result: typeof deploymentResult) => void) | undefined;
+    runLocalDeployment.mockImplementation((_projectId, onOutput) => {
+      reportOutput = onOutput as typeof reportOutput;
+      return new Promise((resolve) => {
+        completeDeployment = resolve;
+      });
+    });
+
+    renderAction();
+    await user.click(await screen.findByRole("button", { name: "Deploy locally" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Start deployment" }));
+
+    await waitFor(() => expect(reportOutput).toBeDefined());
+    reportOutput?.("stdout", "Building image 1/3…\n");
+    expect(await screen.findByRole("log", { name: "Live deployment log" })).toHaveTextContent("Building image 1/3…");
+    expect(screen.getByText("Deployment is running. New output appears below.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+
+    completeDeployment?.(deploymentResult);
+    await waitFor(() => expect(screen.getByText("Deployment completed successfully.")).toBeVisible());
   });
 
   it("keeps local deployment hidden when the project has no configured script", async () => {

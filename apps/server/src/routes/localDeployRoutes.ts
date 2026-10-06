@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import type { CommandRunner } from "../lib/commandRunner.js";
+import type { CommandOutputStream, CommandResult, CommandRunner } from "../lib/commandRunner.js";
 import type { ProjectResolver } from "../lib/projectResolver.js";
 
 export const LOCAL_DEPLOY_SCRIPT_PATH = "deploy/publish-local.sh";
@@ -11,6 +11,10 @@ export const LOCAL_DEPLOY_TIMEOUT_MS = 1000 * 60 * 60;
 type LocalDeployRoutesContext = ProjectResolver & {
   runProjectCommand: CommandRunner;
 };
+
+type LocalDeployEvent =
+  | { type: "output"; stream: CommandOutputStream; chunk: string }
+  | { type: "complete"; result: CommandResult };
 
 const projectParamsSchema = z.object({ id: z.string() });
 
@@ -74,17 +78,54 @@ export async function registerLocalDeployRoutes(
 
     const controller = new AbortController();
     activeDeployments.set(projectPath, controller);
+    const command = "bash " + scriptPath;
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no"
+    });
+    reply.raw.flushHeaders();
+
+    const sendEvent = (event: LocalDeployEvent): void => {
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(JSON.stringify(event) + "\n");
+    };
+    const abortOnDisconnect = (): void => {
+      if (!reply.raw.writableEnded) controller.abort();
+    };
+    reply.raw.on("close", abortOnDisconnect);
 
     try {
-      return await context.runProjectCommand(
+      const result = await context.runProjectCommand(
         projectPath,
         "bash",
         [scriptPath],
         LOCAL_DEPLOY_TIMEOUT_MS,
-        { displayCommand: "bash " + scriptPath, signal: controller.signal }
+        {
+          displayCommand: command,
+          signal: controller.signal,
+          onOutput: (stream, chunk) => sendEvent({ type: "output", stream, chunk })
+        }
       );
+      sendEvent({ type: "complete", result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const result: CommandResult = {
+        ok: false,
+        command,
+        exitCode: null,
+        stdout: "",
+        stderr: message,
+        output: message,
+        durationMs: 0
+      };
+      sendEvent({ type: "complete", result });
     } finally {
       if (activeDeployments.get(projectPath) === controller) activeDeployments.delete(projectPath);
+      reply.raw.off("close", abortOnDisconnect);
+      if (!reply.raw.destroyed && !reply.raw.writableEnded) reply.raw.end();
     }
   });
 }
