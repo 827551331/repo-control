@@ -72,7 +72,7 @@ repo-control keeps the convenience of a dashboard without moving control to a re
 | --- | --- |
 | Dashboard | A widget home that leads with what needs attention, then where to resume: recent repositories, AI conversations, Docker health, automation runs and shortcuts. Widgets are dragged, resized, hidden and restored in an explicit edit mode; the layout is saved with the workspace preferences. |
 | Agent sessions | Search local Codex, Claude Code and Gemini CLI conversations by title or content, filter by provider and resume them from the matching repository. |
-| Repository overview | Triage attention items, working-tree health, upstream drift, Compose services and recent commits from one full-width landing view. |
+| Repository overview | Triage attention items, working-tree health, upstream drift, Compose services and recent commits from one full-width landing view. Repositories with a local publish script also expose a confirmed Deploy locally action. |
 | Git workspace | Inspect staged and unstaged files with an inline text diff and staged line summary; stage, unstage, commit, stash, fetch, pull and push without losing repository context. |
 | Branches | Search local and remote branches, identify the default and merged branches, inspect each latest commit and upstream divergence, then create or check out safely. Dirty checkouts are blocked from branch changes. |
 | Local tooling | Open a repository in VS Code and run scoped terminal commands whose output survives project-tab navigation and whose active process can be stopped. |
@@ -83,7 +83,7 @@ repo-control keeps the convenience of a dashboard without moving control to a re
 
 The Docker runtime page opens a console on any running container: a **Shell** tab holding a live `docker exec` session, where the working directory and environment persist between commands, and a **Logs** tab following `docker logs`. The shell is a pipe rather than a terminal, so full-screen programs such as `vim` or `top` do not work; everything else does. Sessions live in the server's memory, are capped in number, and are closed when the dialog closes, when the server stops, or after 15 minutes without a reader.
 
-The repository Docker tab is capability-driven and appears only for repositories with a Compose file. Workspace-level Docker navigation is shown only when the Docker CLI is available. Docker and VS Code are optional; their controls require the corresponding local tool. There is no speculative Deploy tab: a future CI/CD tab should appear only after repo-control detects a supported pipeline for that repository.
+The repository Docker tab is capability-driven and appears only for repositories with a Compose file. Workspace-level Docker navigation is shown only when the Docker CLI is available. Docker and VS Code are optional; their controls require the corresponding local tool. Repositories with deploy/publish-local.sh show a Deploy locally action in the repository header; there is no speculative Deploy tab, and a future CI/CD tab should appear only after repo-control detects a supported pipeline for that repository.
 
 ### Agent session discovery
 

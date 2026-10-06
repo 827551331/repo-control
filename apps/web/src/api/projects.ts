@@ -1,6 +1,6 @@
 import type { CommandResult } from "../types/common";
 import type { GitActivity, GitDetails, GitFileDiff } from "../types/git";
-import type { ProjectSummary, ProjectsResponse } from "../types/projects";
+import type { LocalDeployAvailability, ProjectSummary, ProjectsResponse } from "../types/projects";
 import { isRecord, jsonRequest, requestJson } from "./http";
 
 export function fetchProjects(signal?: AbortSignal): Promise<ProjectsResponse> {
@@ -43,6 +43,18 @@ export async function runProjectAction(
     output: "Requested",
     durationMs: 0
   };
+}
+
+export function fetchLocalDeployAvailability(projectId: string): Promise<LocalDeployAvailability> {
+  return requestJson("/api/projects/" + projectId + "/local-deploy", "Unable to check local deployment");
+}
+
+export function runLocalDeployment(projectId: string): Promise<CommandResult> {
+  return requestJson(
+    "/api/projects/" + projectId + "/local-deploy",
+    "Local deployment failed",
+    { method: "POST" }
+  );
 }
 
 export function fetchGitDetails(projectId: string): Promise<GitDetails> {

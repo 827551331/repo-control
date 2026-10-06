@@ -19,6 +19,11 @@ export type ProjectSummary = {
   hasDockerCompose: boolean;
 };
 
+export type LocalDeployAvailability = {
+  available: boolean;
+  scriptPath: string | null;
+};
+
 export type ProjectsResponse = {
   root: string;
   projects: ProjectSummary[];

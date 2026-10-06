@@ -698,7 +698,13 @@ export const en = {
     detail: {
       panelAria: "Repository detail {{name}}",
       refresh: "Refresh repository",
-      sections: "Project sections"
+      sections: "Project sections",
+      localDeploy: "Deploy locally",
+      localDeployConfirmTitle: "Deploy {{name}} locally?",
+      localDeployConfirmBody: "This runs the repository’s local publish script from its root. It may build images and update deployed services.",
+      localDeployStart: "Start deployment",
+      localDeployRunning: "Deploying…",
+      localDeployCancel: "Cancel"
     },
     detailTabs: {
       overview: "Overview",
@@ -1981,7 +1987,13 @@ export const it: TranslationSchema<typeof en> = {
     detail: {
       panelAria: "Dettaglio repository {{name}}",
       refresh: "Aggiorna repository",
-      sections: "Sezioni progetto"
+      sections: "Sezioni progetto",
+      localDeploy: "Distribuisci localmente",
+      localDeployConfirmTitle: "Distribuire {{name}} localmente?",
+      localDeployConfirmBody: "Esegue lo script di pubblicazione locale del repository. Potrebbe creare immagini e aggiornare i servizi distribuiti.",
+      localDeployStart: "Avvia distribuzione",
+      localDeployRunning: "Distribuzione…",
+      localDeployCancel: "Annulla"
     },
     detailTabs: {
       overview: "Panoramica",

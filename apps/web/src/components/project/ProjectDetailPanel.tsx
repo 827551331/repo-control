@@ -22,6 +22,7 @@ import {
   ProjectDataUnavailable,
   type ProjectDataFailure
 } from "./ProjectDataQueryState";
+import { LocalDeployAction } from "./LocalDeployAction";
 import { RepositoryOverviewPanel } from "./RepositoryOverviewPanel";
 import { TerminalPanel } from "./TerminalPanel";
 
@@ -252,6 +253,13 @@ export const ProjectDetailPanel = React.memo(function ProjectDetailPanel({
         <Tooltip title={t("project.detail.refresh")}>
           <IconButton onClick={refreshCurrentTab} aria-label={t("project.detail.refresh")}><RefreshIcon /></IconButton>
         </Tooltip>
+        <LocalDeployAction
+          projectId={project.id}
+          projectName={project.name}
+          isActive={isActive}
+          onResult={reportOverviewResult}
+          onCompleted={refreshAfterProjectAction}
+        />
         <Tooltip title={isFavorite ? t("dashboard.map.removeFavorite") : t("dashboard.map.addFavorite")}>
           <IconButton
             onClick={() => onToggleFavorite(project.id)}

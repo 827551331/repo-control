@@ -16,6 +16,7 @@ import { registerBrainRoutes } from "./routes/brainRoutes.js";
 import { registerClaudeRoutes } from "./routes/claudeRoutes.js";
 import { registerDockerRoutes } from "./routes/dockerRoutes.js";
 import { registerGitRoutes } from "./routes/gitRoutes.js";
+import { registerLocalDeployRoutes } from "./routes/localDeployRoutes.js";
 import { registerTerminalRoutes } from "./routes/terminalRoutes.js";
 import { registerWorkflowRoutes } from "./routes/workflowRoutes.js";
 import { createAuthGuard } from "./services/authService.js";
@@ -162,6 +163,7 @@ export async function createServer(): Promise<{
   await registerAgentSessionRoutes(app, context);
   await registerDockerRoutes(app, context);
   await registerGitRoutes(app, context);
+  await registerLocalDeployRoutes(app, context);
   await registerTerminalRoutes(app, context);
   await registerBrainRoutes(app, context);
   await registerClaudeRoutes(app, context);
