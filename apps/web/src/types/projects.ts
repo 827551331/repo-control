@@ -1,3 +1,5 @@
+import type { CommandResult } from "./common";
+
 export type ProjectSummary = {
   id: string;
   name: string;
@@ -26,6 +28,26 @@ export type LocalDeployAvailability = {
 
 export type LocalDeployOutputStream = "stdout" | "stderr";
 export type LocalDeployOutputHandler = (stream: LocalDeployOutputStream, chunk: string) => void;
+
+export type LocalDeployLogChunk = {
+  stream: LocalDeployOutputStream;
+  chunk: string;
+};
+
+export type LocalDeployJobSnapshot = {
+  jobId: string;
+  scriptPath: string;
+  state: "running" | "completed";
+  startedAt: number;
+  completedAt: number | null;
+  output: LocalDeployLogChunk[];
+  result: CommandResult | null;
+};
+
+export type LocalDeployEvent =
+  | { type: "snapshot"; job: LocalDeployJobSnapshot }
+  | ({ type: "output" } & LocalDeployLogChunk)
+  | { type: "complete"; result: CommandResult; completedAt: number };
 
 export type ProjectsResponse = {
   root: string;

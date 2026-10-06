@@ -50,19 +50,20 @@ function registerRoutes(
   });
 }
 
-test("advertises and runs the fixed local publish script from the repository root", async (t) => {
+test("advertises, starts and resumes the fixed local publish script", async (t) => {
   const { app, projectPath } = await createProject(t);
   await fs.mkdir(path.join(projectPath, "deploy"));
   await fs.writeFile(path.join(projectPath, LOCAL_DEPLOY_SCRIPT_PATH), "echo deployment complete\n");
 
   const calls: Array<{ cwd: string; command: string; args: string[]; timeout: number | undefined }> = [];
-  const streamedOutput: string[] = [];
+  let reportOutput: ((stream: "stdout" | "stderr", chunk: string) => void) | undefined;
+  let completeDeployment: ((result: CommandResult) => void) | undefined;
   await registerRoutes(app, projectPath, async (cwd, command, args, timeout, options) => {
     calls.push({ cwd, command, args, timeout });
-    options?.onOutput?.("stdout", "building image\n");
-    options?.onOutput?.("stderr", "warning\n");
-    streamedOutput.push("received callback output");
-    return commandResult();
+    reportOutput = options?.onOutput;
+    return new Promise((resolve) => {
+      completeDeployment = resolve;
+    });
   });
 
   const availability = await app.inject({ method: "GET", url: "/api/projects/alpha/local-deploy" });
@@ -73,16 +74,35 @@ test("advertises and runs the fixed local publish script from the repository roo
   });
 
   const response = await app.inject({ method: "POST", url: "/api/projects/alpha/local-deploy" });
-  assert.equal(response.statusCode, 200);
-  const contentType = response.headers["content-type"];
+  assert.equal(response.statusCode, 202);
+  const startedJob = response.json();
+  assert.equal(startedJob.state, "running");
+  assert.equal(typeof startedJob.jobId, "string");
+
+  reportOutput?.("stdout", "building image\n");
+  const current = await app.inject({ method: "GET", url: "/api/projects/alpha/local-deploy/current" });
+  assert.equal(current.statusCode, 200);
+  assert.deepEqual(current.json().output, [{ stream: "stdout", chunk: "building image\n" }]);
+
+  const eventsPromise = app.inject({
+    method: "GET",
+    url: `/api/projects/alpha/local-deploy/${startedJob.jobId}/events`
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  reportOutput?.("stderr", "warning\n");
+  completeDeployment?.(commandResult());
+
+  const eventsResponse = await eventsPromise;
+  assert.equal(eventsResponse.statusCode, 200);
+  const contentType = eventsResponse.headers["content-type"];
   assert.ok(typeof contentType === "string" && /application\/x-ndjson/.test(contentType));
-  const events = response.body.trim().split("\n").map((line) => JSON.parse(line));
-  assert.deepEqual(events, [
-    { type: "output", stream: "stdout", chunk: "building image\n" },
+  const events = eventsResponse.body.trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(events[0].type, "snapshot");
+  assert.deepEqual(events[0].job.output, [{ stream: "stdout", chunk: "building image\n" }]);
+  assert.deepEqual(events.slice(1), [
     { type: "output", stream: "stderr", chunk: "warning\n" },
-    { type: "complete", result: commandResult() }
+    { type: "complete", result: commandResult(), completedAt: events[2].completedAt }
   ]);
-  assert.equal(streamedOutput.length, 1);
   assert.deepEqual(calls, [{
     cwd: projectPath,
     command: "bash",
@@ -144,12 +164,13 @@ test("rejects a second deployment while one is already running", async (t) => {
     });
   });
 
-  const firstRun = app.inject({ method: "POST", url: "/api/projects/alpha/local-deploy" });
+  const firstRun = await app.inject({ method: "POST", url: "/api/projects/alpha/local-deploy" });
+  assert.equal(firstRun.statusCode, 202);
   while (!started) await new Promise((resolve) => setImmediate(resolve));
 
   const secondResponse = await app.inject({ method: "POST", url: "/api/projects/alpha/local-deploy" });
   assert.equal(secondResponse.statusCode, 409);
 
   completeFirst?.(commandResult());
-  assert.equal((await firstRun).statusCode, 200);
+  await new Promise((resolve) => setImmediate(resolve));
 });

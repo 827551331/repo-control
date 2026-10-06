@@ -710,6 +710,7 @@ export const en = {
       localDeployLogRunning: "Deployment is running. New output appears below.",
       localDeployLogSucceeded: "Deployment completed successfully.",
       localDeployLogFailed: "Deployment failed. See the output below.",
+      localDeployLogDisconnected: "The log connection was interrupted. Deployment continues; refresh to reconnect.",
       localDeployLogWaitingOutput: "Waiting for deployment output…",
       localDeployLogNoOutput: "The deployment produced no output.",
       localDeployClose: "Close"
@@ -2007,6 +2008,7 @@ export const it: TranslationSchema<typeof en> = {
       localDeployLogRunning: "Distribuzione in corso. Il nuovo output apparirà qui sotto.",
       localDeployLogSucceeded: "Distribuzione completata correttamente.",
       localDeployLogFailed: "Distribuzione non riuscita. Consulta l'output qui sotto.",
+      localDeployLogDisconnected: "Connessione al log interrotta. La distribuzione continua; aggiorna per riconnetterti.",
       localDeployLogWaitingOutput: "In attesa dell'output della distribuzione…",
       localDeployLogNoOutput: "La distribuzione non ha prodotto output.",
       localDeployClose: "Chiudi"

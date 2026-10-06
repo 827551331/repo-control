@@ -2,7 +2,8 @@ import type { CommandResult } from "../types/common";
 import type { GitActivity, GitDetails, GitFileDiff } from "../types/git";
 import type {
   LocalDeployAvailability,
-  LocalDeployOutputHandler,
+  LocalDeployEvent,
+  LocalDeployJobSnapshot,
   ProjectSummary,
   ProjectsResponse
 } from "../types/projects";
@@ -54,21 +55,36 @@ export function fetchLocalDeployAvailability(projectId: string): Promise<LocalDe
   return requestJson("/api/projects/" + projectId + "/local-deploy", "Unable to check local deployment");
 }
 
-export async function runLocalDeployment(
-  projectId: string,
-  onOutput: LocalDeployOutputHandler,
-  signal?: AbortSignal
-): Promise<CommandResult> {
-  const response = await fetch("/api/projects/" + projectId + "/local-deploy", {
-    method: "POST",
-    signal
-  });
+export function fetchCurrentLocalDeployment(projectId: string): Promise<LocalDeployJobSnapshot | null> {
+  return requestJson(
+    "/api/projects/" + projectId + "/local-deploy/current",
+    "Unable to check the running deployment"
+  );
+}
 
+export function startLocalDeployment(projectId: string): Promise<LocalDeployJobSnapshot> {
+  return requestJson(
+    "/api/projects/" + projectId + "/local-deploy",
+    "Local deployment failed",
+    { method: "POST" }
+  );
+}
+
+export async function watchLocalDeployment(
+  projectId: string,
+  jobId: string,
+  onEvent: (event: LocalDeployEvent) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const response = await fetch(
+    "/api/projects/" + projectId + "/local-deploy/" + encodeURIComponent(jobId) + "/events",
+    { signal }
+  );
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null);
     const message = isRecord(payload) && typeof payload.message === "string"
       ? payload.message
-      : "Local deployment failed";
+      : "Unable to connect to the deployment log";
     const code = isRecord(payload) && typeof payload.code === "string" ? payload.code : null;
     throw new ApiError(message, response.status, code, payload);
   }
@@ -80,23 +96,12 @@ export async function runLocalDeployment(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let pending = "";
-  let result: CommandResult | null = null;
 
   function consumeLine(line: string): void {
     if (!line.trim()) return;
 
     const event: unknown = JSON.parse(line);
-    if (!isRecord(event)) return;
-
-    if (
-      event.type === "output" &&
-      (event.stream === "stdout" || event.stream === "stderr") &&
-      typeof event.chunk === "string"
-    ) {
-      onOutput(event.stream, event.chunk);
-    } else if (event.type === "complete" && isRecord(event.result)) {
-      result = event.result as CommandResult;
-    }
+    if (isLocalDeployEvent(event)) onEvent(event);
   }
 
   try {
@@ -118,8 +123,15 @@ export async function runLocalDeployment(
   }
 
   if (pending.trim()) consumeLine(pending);
-  if (!result) throw new Error("The deployment log stream ended before a result was received.");
-  return result;
+}
+
+function isLocalDeployEvent(value: unknown): value is LocalDeployEvent {
+  if (!isRecord(value)) return false;
+  if (value.type === "snapshot") return isRecord(value.job);
+  if (value.type === "output") {
+    return (value.stream === "stdout" || value.stream === "stderr") && typeof value.chunk === "string";
+  }
+  return value.type === "complete" && isRecord(value.result) && typeof value.completedAt === "number";
 }
 
 export function fetchGitDetails(projectId: string): Promise<GitDetails> {

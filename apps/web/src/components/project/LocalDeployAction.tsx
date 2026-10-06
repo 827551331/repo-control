@@ -11,12 +11,17 @@ import {
   Stack,
   Typography
 } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { fetchLocalDeployAvailability, runLocalDeployment } from "../../api/projects";
+import {
+  fetchCurrentLocalDeployment,
+  fetchLocalDeployAvailability,
+  startLocalDeployment,
+  watchLocalDeployment
+} from "../../api/projects";
 import type { CommandResult } from "../../types/common";
-import type { LocalDeployOutputStream } from "../../types/projects";
+import type { LocalDeployEvent, LocalDeployJobSnapshot, LocalDeployOutputStream } from "../../types/projects";
 import { commandErrorResult } from "../../utils/commandResult";
 
 type LiveOutputChunk = { stream: LocalDeployOutputStream; text: string };
@@ -38,26 +43,42 @@ export function LocalDeployAction({
   onCompleted
 }: LocalDeployActionProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [isConfirmOpen, setIsConfirmOpen] = React.useState(false);
   const [isRunning, setIsRunning] = React.useState(false);
   const [hasStarted, setHasStarted] = React.useState(false);
   const [liveOutput, setLiveOutput] = React.useState<LiveOutputChunk[]>([]);
   const [deploymentResult, setDeploymentResult] = React.useState<CommandResult | null>(null);
+  const [logConnectionLost, setLogConnectionLost] = React.useState(false);
   const outputRef = React.useRef<HTMLPreElement | null>(null);
+  const watchedJobIdRef = React.useRef<string | null>(null);
+  const watcherAbortRef = React.useRef<AbortController | null>(null);
+  const onResultRef = React.useRef(onResult);
+  const onCompletedRef = React.useRef(onCompleted);
+  onResultRef.current = onResult;
+  onCompletedRef.current = onCompleted;
   const availabilityQuery = useQuery({
     queryKey: ["project-local-deploy", projectId],
     queryFn: () => fetchLocalDeployAvailability(projectId),
     enabled: isActive,
     staleTime: 30_000
   });
+  const currentDeploymentQuery = useQuery({
+    queryKey: ["project-local-deploy-current", projectId],
+    queryFn: () => fetchCurrentLocalDeployment(projectId),
+    enabled: isActive,
+    staleTime: 0,
+    retry: false
+  });
   const availability = availabilityQuery.data;
+  const refetchAvailability = availabilityQuery.refetch;
 
   React.useEffect(() => {
     const outputElement = outputRef.current;
     if (outputElement) outputElement.scrollTop = outputElement.scrollHeight;
   }, [liveOutput]);
 
-  function appendOutput(stream: LocalDeployOutputStream, chunk: string): void {
+  const appendOutput = React.useCallback((stream: LocalDeployOutputStream, chunk: string): void => {
     setLiveOutput((current) => {
       const next = [...current, { stream, text: chunk }];
       let totalLength = next.reduce((total, entry) => total + entry.text.length, 0);
@@ -72,26 +93,80 @@ export function LocalDeployAction({
 
       return next;
     });
-  }
+  }, []);
+
+  const finishDeployment = React.useCallback((result: CommandResult): void => {
+    setIsRunning(false);
+    setDeploymentResult(result);
+    setLogConnectionLost(false);
+    onResultRef.current(result);
+    onCompletedRef.current();
+    queryClient.setQueryData<LocalDeployJobSnapshot | null>(["project-local-deploy-current", projectId], null);
+    void refetchAvailability();
+  }, [projectId, queryClient, refetchAvailability]);
+
+  const handleDeploymentEvent = React.useCallback((event: LocalDeployEvent): void => {
+    if (event.type === "snapshot") {
+      setHasStarted(true);
+      setIsConfirmOpen(true);
+      setLiveOutput(event.job.output.map((entry) => ({ stream: entry.stream, text: entry.chunk })));
+      setLogConnectionLost(false);
+      if (event.job.state === "running") {
+        setIsRunning(true);
+      } else if (event.job.result) {
+        finishDeployment(event.job.result);
+      }
+      return;
+    }
+
+    if (event.type === "output") {
+      setLogConnectionLost(false);
+      appendOutput(event.stream, event.chunk);
+      return;
+    }
+
+    finishDeployment(event.result);
+  }, [appendOutput, finishDeployment]);
+
+  React.useEffect(() => {
+    const job = currentDeploymentQuery.data;
+    if (!isActive || !job || job.state !== "running" || watchedJobIdRef.current === job.jobId) return;
+
+    const controller = new AbortController();
+    watchedJobIdRef.current = job.jobId;
+    watcherAbortRef.current = controller;
+    setHasStarted(true);
+    setIsConfirmOpen(true);
+    setIsRunning(true);
+    setLiveOutput(job.output.map((entry) => ({ stream: entry.stream, text: entry.chunk })));
+    setDeploymentResult(null);
+    setLogConnectionLost(false);
+
+    void watchLocalDeployment(projectId, job.jobId, handleDeploymentEvent, controller.signal).catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      setLogConnectionLost(true);
+      appendOutput("stderr", `\n${error instanceof Error ? error.message : String(error)}\n`);
+    });
+
+    return () => {
+      controller.abort();
+      if (watcherAbortRef.current === controller) watcherAbortRef.current = null;
+      if (watchedJobIdRef.current === job.jobId) watchedJobIdRef.current = null;
+    };
+  }, [appendOutput, currentDeploymentQuery.data, handleDeploymentEvent, isActive, projectId]);
 
   async function startDeployment() {
     setHasStarted(true);
     setLiveOutput([]);
     setDeploymentResult(null);
+    setLogConnectionLost(false);
     setIsRunning(true);
 
     try {
-      const result = await runLocalDeployment(projectId, appendOutput);
-      setDeploymentResult(result);
-      onResult(result);
+      const job = await startLocalDeployment(projectId);
+      queryClient.setQueryData<LocalDeployJobSnapshot | null>(["project-local-deploy-current", projectId], job);
     } catch (error) {
-      const result = commandErrorResult(t("project.detail.localDeploy"), error);
-      setDeploymentResult(result);
-      onResult(result);
-    } finally {
-      setIsRunning(false);
-      onCompleted();
-      void availabilityQuery.refetch();
+      finishDeployment(commandErrorResult(t("project.detail.localDeploy"), error));
     }
   }
 
@@ -106,7 +181,7 @@ export function LocalDeployAction({
         variant="contained"
         color="primary"
         startIcon={isRunning ? <CircularProgress size={16} color="inherit" /> : <RocketLaunchOutlinedIcon />}
-        disabled={isRunning}
+        disabled={isRunning || currentDeploymentQuery.isPending}
         onClick={() => {
           setHasStarted(false);
           setLiveOutput([]);
@@ -139,7 +214,9 @@ export function LocalDeployAction({
                 isRunning ? "text.secondary" : deploymentResult?.ok ? "success.main" : "error.main"
               }>
                 {isRunning
-                  ? t("project.detail.localDeployLogRunning")
+                  ? logConnectionLost
+                    ? t("project.detail.localDeployLogDisconnected")
+                    : t("project.detail.localDeployLogRunning")
                   : deploymentResult?.ok
                     ? t("project.detail.localDeployLogSucceeded")
                     : t("project.detail.localDeployLogFailed")}

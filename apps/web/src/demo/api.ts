@@ -138,6 +138,7 @@ export async function demoRequest(
     });
   }
   if (route === "/api/projects") return reply({ root: DEMO_ROOT, projects });
+  if (/^\/api\/projects\/[^/]+\/local-deploy\/current$/.test(route)) return reply(null);
   if (/^\/api\/projects\/[^/]+\/local-deploy$/.test(route)) {
     if (method === "POST") return unsupported();
     return reply({ available: false, scriptPath: null });

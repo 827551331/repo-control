@@ -29,11 +29,13 @@ import {
   fetchGitActivity,
   fetchGitDetails,
   fetchGitFileDiff,
+  fetchCurrentLocalDeployment,
   fetchProjects,
   fetchProjectSummary,
-  runLocalDeployment,
   runProjectAction,
-  runTerminalCommand
+  runTerminalCommand,
+  startLocalDeployment,
+  watchLocalDeployment
 } from "./projects";
 import {
   cancelWorkflowRun,
@@ -136,7 +138,27 @@ describe("API endpoint contracts", () => {
     ]);
   });
 
-  it("streams local deployment output and returns its final command result", async () => {
+  it("fetches the current deployment and starts a job without tying it to the page request", async () => {
+    const job = {
+      jobId: "job-1",
+      scriptPath: "deploy/publish-local.sh",
+      state: "running" as const,
+      startedAt: 1,
+      completedAt: null,
+      output: [],
+      result: null
+    };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(job))
+      .mockResolvedValueOnce(jsonResponse(job));
+
+    await expect(fetchCurrentLocalDeployment("alpha")).resolves.toEqual(job);
+    await expect(startLocalDeployment("alpha")).resolves.toEqual(job);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/projects/alpha/local-deploy/current", undefined);
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/projects/alpha/local-deploy", { method: "POST" });
+  });
+
+  it("watches deployment events across response chunk boundaries", async () => {
     const result = {
       ok: true,
       command: "bash deploy/publish-local.sh",
@@ -146,15 +168,22 @@ describe("API endpoint contracts", () => {
       output: "building image\n",
       durationMs: 321
     };
+    const job = {
+      jobId: "job-1",
+      scriptPath: "deploy/publish-local.sh",
+      state: "running" as const,
+      startedAt: 1,
+      completedAt: null,
+      output: [],
+      result: null
+    };
     const encoder = new TextEncoder();
-    const outputEvent = encoder.encode(JSON.stringify({
-      type: "output",
-      stream: "stdout",
-      chunk: "building image\n"
-    }) + "\n");
-    const completeEvent = encoder.encode(JSON.stringify({ type: "complete", result }) + "\n");
+    const snapshotEvent = encoder.encode(JSON.stringify({ type: "snapshot", job }) + "\n");
+    const outputEvent = encoder.encode(JSON.stringify({ type: "output", stream: "stdout", chunk: "building image\n" }) + "\n");
+    const completeEvent = encoder.encode(JSON.stringify({ type: "complete", result, completedAt: 2 }) + "\n");
     const response = new Response(new ReadableStream<Uint8Array>({
       start(controller) {
+        controller.enqueue(snapshotEvent);
         controller.enqueue(outputEvent.slice(0, 7));
         controller.enqueue(outputEvent.slice(7));
         controller.enqueue(completeEvent);
@@ -162,14 +191,13 @@ describe("API endpoint contracts", () => {
       }
     }));
     fetchMock.mockResolvedValue(response);
-    const onOutput = vi.fn();
+    const onEvent = vi.fn();
 
-    await expect(runLocalDeployment("alpha", onOutput)).resolves.toEqual(result);
-    expect(fetchMock).toHaveBeenCalledWith("/api/projects/alpha/local-deploy", {
-      method: "POST",
+    await watchLocalDeployment("alpha", "job-1", onEvent);
+    expect(fetchMock).toHaveBeenCalledWith("/api/projects/alpha/local-deploy/job-1/events", {
       signal: undefined
     });
-    expect(onOutput).toHaveBeenCalledWith("stdout", "building image\n");
+    expect(onEvent.mock.calls.map(([event]) => event.type)).toEqual(["snapshot", "output", "complete"]);
   });
 
   it("normalizes all folder picker outcomes", async () => {
