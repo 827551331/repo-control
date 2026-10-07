@@ -26,6 +26,8 @@ import { commandErrorResult } from "../../utils/commandResult";
 
 type LiveOutputChunk = { stream: LocalDeployOutputStream; text: string };
 const LIVE_OUTPUT_MAX_LENGTH = 30_000;
+const MIN_DIALOG_WIDTH = 360;
+const MIN_DIALOG_HEIGHT = 300;
 
 type LocalDeployActionProps = {
   projectId: string;
@@ -50,7 +52,9 @@ export function LocalDeployAction({
   const [liveOutput, setLiveOutput] = React.useState<LiveOutputChunk[]>([]);
   const [deploymentResult, setDeploymentResult] = React.useState<CommandResult | null>(null);
   const [logConnectionLost, setLogConnectionLost] = React.useState(false);
+  const [dialogSize, setDialogSize] = React.useState<{ width: number; height: number } | null>(null);
   const outputRef = React.useRef<HTMLPreElement | null>(null);
+  const resizeStartRef = React.useRef<{ pointerX: number; pointerY: number; width: number; height: number } | null>(null);
   const watchedJobIdRef = React.useRef<string | null>(null);
   const watcherAbortRef = React.useRef<AbortController | null>(null);
   const onResultRef = React.useRef(onResult);
@@ -72,6 +76,32 @@ export function LocalDeployAction({
   });
   const availability = availabilityQuery.data;
   const refetchAvailability = availabilityQuery.refetch;
+
+  React.useEffect(() => {
+    const onPointerMove = (event: PointerEvent): void => {
+      const start = resizeStartRef.current;
+      if (!start) return;
+
+      const maxWidth = Math.max(MIN_DIALOG_WIDTH, window.innerWidth - 24);
+      const maxHeight = Math.max(MIN_DIALOG_HEIGHT, window.innerHeight - 24);
+      setDialogSize({
+        width: Math.min(maxWidth, Math.max(MIN_DIALOG_WIDTH, start.width + event.clientX - start.pointerX)),
+        height: Math.min(maxHeight, Math.max(MIN_DIALOG_HEIGHT, start.height + event.clientY - start.pointerY))
+      });
+    };
+    const stopResizing = (): void => {
+      resizeStartRef.current = null;
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopResizing);
+    window.addEventListener("pointercancel", stopResizing);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResizing);
+      window.removeEventListener("pointercancel", stopResizing);
+    };
+  }, []);
 
   React.useEffect(() => {
     const outputElement = outputRef.current;
@@ -196,20 +226,41 @@ export function LocalDeployAction({
         onClose={() => {
           if (!isRunning) setIsConfirmOpen(false);
         }}
-        maxWidth="xs"
-        fullWidth
+        maxWidth={false}
         aria-labelledby="local-deploy-title"
+        PaperProps={{
+          sx: {
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            width: hasStarted
+              ? dialogSize?.width ?? "min(1280px, calc(100vw - 24px))"
+              : "min(480px, calc(100vw - 32px))",
+            height: hasStarted ? dialogSize?.height ?? "min(900px, calc(100vh - 24px))" : "auto",
+            maxWidth: hasStarted ? "calc(100vw - 24px)" : "calc(100vw - 32px)",
+            maxHeight: hasStarted ? "calc(100vh - 24px)" : "calc(100vh - 32px)",
+            m: 1.5,
+            overflow: "hidden",
+            "@media (max-width: 600px)": {
+              width: hasStarted ? dialogSize?.width ?? "calc(100vw - 16px)" : "calc(100vw - 32px)",
+              height: hasStarted ? dialogSize?.height ?? "calc(100dvh - 16px)" : "auto",
+              maxWidth: hasStarted ? "calc(100vw - 16px)" : "calc(100vw - 32px)",
+              maxHeight: hasStarted ? "calc(100dvh - 16px)" : "calc(100dvh - 32px)",
+              m: 1
+            }
+          }
+        }}
       >
         <DialogTitle id="local-deploy-title">
           {hasStarted
             ? t("project.detail.localDeployLogTitle", { name: projectName })
             : t("project.detail.localDeployConfirmTitle", { name: projectName })}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
           {!hasStarted ? (
             <DialogContentText>{t("project.detail.localDeployConfirmBody")}</DialogContentText>
           ) : (
-            <Stack spacing={1} sx={{ mb: 1.5 }}>
+            <Stack spacing={1} sx={{ mb: 1.5, flex: 1, minHeight: 0 }}>
               <Typography variant="body2" color={
                 isRunning ? "text.secondary" : deploymentResult?.ok ? "success.main" : "error.main"
               }>
@@ -229,8 +280,8 @@ export function LocalDeployAction({
                 ref={outputRef}
                 sx={{
                   m: 0,
+                  flex: 1,
                   minHeight: 180,
-                  maxHeight: 320,
                   overflow: "auto",
                   p: 1.5,
                   border: "1px solid",
@@ -240,8 +291,7 @@ export function LocalDeployAction({
                   fontFamily: "var(--rc-font-mono)",
                   fontSize: 12,
                   lineHeight: 1.55,
-                  whiteSpace: "pre-wrap",
-                  overflowWrap: "anywhere"
+                  whiteSpace: "pre"
                 }}
               >
                 {liveOutput.length > 0
@@ -278,7 +328,7 @@ export function LocalDeployAction({
             {availability.scriptPath}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 2.5, pb: 2 }}>
+        <DialogActions sx={{ px: 2.5, pb: 2, pr: hasStarted ? 6 : 2.5 }}>
           {!hasStarted ? (
             <>
               <Button onClick={() => setIsConfirmOpen(false)}>
@@ -298,6 +348,51 @@ export function LocalDeployAction({
             </Button>
           )}
         </DialogActions>
+        {hasStarted && (
+          <Box
+            component="button"
+            type="button"
+            aria-label={t("project.detail.localDeployResize")}
+            title={t("project.detail.localDeployResize")}
+            onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => {
+              const paper = event.currentTarget.closest<HTMLElement>("[role='dialog']");
+              if (!paper) return;
+              const bounds = paper.getBoundingClientRect();
+              resizeStartRef.current = {
+                pointerX: event.clientX,
+                pointerY: event.clientY,
+                width: bounds.width,
+                height: bounds.height
+              };
+              event.preventDefault();
+            }}
+            sx={{
+              position: "absolute",
+              right: 4,
+              bottom: 4,
+              zIndex: 1,
+              display: "grid",
+              placeItems: "center",
+              width: 28,
+              height: 28,
+              p: 0,
+              border: 0,
+              borderRadius: 1,
+              bgcolor: "transparent",
+              color: "text.secondary",
+              cursor: "nwse-resize",
+              touchAction: "none",
+              "&::after": {
+                content: "''",
+                width: 12,
+                height: 12,
+                background: "repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 4px)"
+              },
+              "&:hover": { bgcolor: "action.hover" },
+              "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main" }
+            }}
+          />
+        )}
       </Dialog>
     </>
   );

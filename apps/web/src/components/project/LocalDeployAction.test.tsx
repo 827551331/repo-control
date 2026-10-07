@@ -1,7 +1,7 @@
 import type { CommandResult } from "../../types/common";
 import type { LocalDeployEvent, LocalDeployJobSnapshot } from "../../types/projects";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithTheme } from "../../test/render";
@@ -157,6 +157,7 @@ describe("LocalDeployAction", () => {
     expect(await screen.findByRole("dialog")).toBeVisible();
     expect(await screen.findByRole("log", { name: "Live deployment log" })).toHaveTextContent("Building image 1/3…");
     expect(screen.getByText("Deployment is running. New output appears below.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Resize deployment log" })).toBeVisible();
     await waitFor(() => expect(watchLocalDeployment).toHaveBeenCalledWith(
       "alpha",
       "job-1",
@@ -185,6 +186,13 @@ describe("LocalDeployAction", () => {
     expect(await screen.findByRole("log", { name: "Live deployment log" })).toHaveTextContent("Building image 1/3…");
     expect(screen.getByText("Deployment is running. New output appears below.")).toBeVisible();
     expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+
+    const resizeHandle = screen.getByRole("button", { name: "Resize deployment log" });
+    const dialog = screen.getByRole("dialog");
+    fireEvent.pointerDown(resizeHandle, { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 500, clientY: 500 });
+    expect(dialog).toHaveStyle({ width: "400px", height: "400px" });
+    fireEvent.pointerUp(window);
 
     emitDeploymentEvent({ type: "complete", result: deploymentResult, completedAt: 2 });
     await waitFor(() => expect(screen.getByText("Deployment completed successfully.")).toBeVisible());

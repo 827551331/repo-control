@@ -713,6 +713,7 @@ export const en = {
       localDeployLogDisconnected: "The log connection was interrupted. Deployment continues; refresh to reconnect.",
       localDeployLogWaitingOutput: "Waiting for deployment output…",
       localDeployLogNoOutput: "The deployment produced no output.",
+      localDeployResize: "Resize deployment log",
       localDeployClose: "Close"
     },
     detailTabs: {
@@ -2011,6 +2012,7 @@ export const it: TranslationSchema<typeof en> = {
       localDeployLogDisconnected: "Connessione al log interrotta. La distribuzione continua; aggiorna per riconnetterti.",
       localDeployLogWaitingOutput: "In attesa dell'output della distribuzione…",
       localDeployLogNoOutput: "La distribuzione non ha prodotto output.",
+      localDeployResize: "Ridimensiona log distribuzione",
       localDeployClose: "Chiudi"
     },
     detailTabs: {
